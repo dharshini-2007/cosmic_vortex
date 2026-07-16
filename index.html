@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Galaxy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+        body, html {
+            overflow: hidden;
+            background-color: #000;
+        }
+        .webgl {
+            position: fixed;
+            top: 0;
+            left: 0;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas class="webgl"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // 1. Scene Setup
+        const canvas = document.querySelector('canvas.webgl');
+        const scene = new THREE.Scene();
+
+        // 2. Galaxy Parameters
+        const parameters = {};
+        parameters.count = 180000;        
+        parameters.size = 0.01;           
+        parameters.radius = 3;            
+        parameters.branches = 12;          
+        parameters.spin = 2;              
+        parameters.randomness = 0.08;      
+        parameters.randomnessPower = 3;   
+        parameters.insideColor = '#ff6030';  
+        parameters.outsideColor = '#1b3984'; 
+
+        let geometry = null;
+        let material = null;
+        let points = null;
+
+        // 3. Galaxy Generator Function
+        const generateGalaxy = () => {
+            if(points !== null) {
+                geometry.dispose();
+                material.dispose();
+                scene.remove(points);
+            }
+
+            geometry = new THREE.BufferGeometry();
+
+            const positions = new Float32Array(parameters.count * 3);
+            const colors = new Float32Array(parameters.count * 3);
+
+            const colorInside = new THREE.Color(parameters.insideColor);
+            const colorOutside = new THREE.Color(parameters.outsideColor);
+
+            for(let i = 0; i < parameters.count; i++) {
+                const i3 = i * 3;
+                const radius = Math.random() * parameters.radius;
+                const spinAngle = radius * parameters.spin;
+                const branchAngle = ((i % parameters.branches) / parameters.branches) * Math.PI * 2;
+
+                const randomX = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+                const randomY = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+                const randomZ = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+
+                positions[i3    ] = Math.cos(branchAngle + spinAngle) * radius + randomX;
+                positions[i3 + 1] = randomY;
+                positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+
+                const mixedColor = colorInside.clone();
+                mixedColor.lerp(colorOutside, radius / parameters.radius);
+
+                colors[i3    ] = mixedColor.r;
+                colors[i3 + 1] = mixedColor.g;
+                colors[i3 + 2] = mixedColor.b;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            material = new THREE.PointsMaterial({
+                size: parameters.size,
+                sizeAttenuation: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending, 
+                vertexColors: true
+            });
+
+            points = new THREE.Points(geometry, material);
+            scene.add(points);
+        };
+
+        generateGalaxy();
+        // ===== Background Stars =====
+
+const starGeometry = new THREE.BufferGeometry();
+
+const starCount = 8000;
+
+const starPositions = new Float32Array(starCount * 3);
+
+for (let i = 0; i < starCount; i++) {
+
+    const i3 = i * 3;
+
+    starPositions[i3] = (Math.random() - 0.5) * 100;
+    starPositions[i3 + 1] = (Math.random() - 0.5) * 100;
+    starPositions[i3 + 2] = (Math.random() - 0.5) * 100;
+}
+
+starGeometry.setAttribute(
+    'position',
+    new THREE.BufferAttribute(starPositions, 3)
+);
+
+const starMaterial = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.03,
+    transparent: true,
+    opacity: 0.8
+});
+
+const backgroundStars = new THREE.Points(
+    starGeometry,
+    starMaterial
+);
+
+scene.add(backgroundStars);
+
+        // 4. Window Sizes & Resize handling
+        const sizes = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+
+        window.addEventListener('resize', () => {
+            sizes.width = window.innerWidth;
+            sizes.height = window.innerHeight;
+
+            camera.aspect = sizes.width / sizes.height;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(sizes.width, sizes.height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        });
+
+        // 5. Camera (Starts directly above looking down)
+        const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100);
+        camera.position.x = 0;
+        camera.position.y = 6; // High up on Y-axis
+        camera.position.z = 0;
+        scene.add(camera);
+
+        const controls = new THREE.OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+
+        // 6. Renderer
+        const renderer = new THREE.WebGLRenderer({
+            canvas: canvas
+        });
+        renderer.setSize(sizes.width, sizes.height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // 7. Animation Loop with Transition
+        const clock = new THREE.Clock();
+
+        const tick = () => {
+            const elapsedTime = clock.getElapsedTime();
+
+            // Rotate the galaxy
+            if(points) {
+                points.rotation.y = elapsedTime * 0.12; 
+            }
+
+            // Cinematic Transition: Smoothly moves camera down and slightly forward over time
+            if (camera.position.y > 2.5) {
+                camera.position.y -= 0.015; // Moves downward
+                camera.position.z += 0.018; // Moves outward to get the angled perspective
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+            window.requestAnimationFrame(tick);
+        };
+
+        tick();
+    </script>
+</body>
+</html>
